@@ -51,6 +51,30 @@ class GameManager {
          return ob;
     }
 
+
+    public Obj secondClosestShip(GameMap gameMap, Pilot pilot)
+    {
+         Obj ob = new Obj();
+         int nr = 0;
+         Map<Double, Entity> entityByDistance = new TreeMap<>();
+         entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
+         for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
+         {
+            if((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId()))
+            {
+                ob.shipId = entry.getValue().getId();
+                ob.playerId = entry.getValue().getOwner();
+                nr++;
+                if(nr == 2)
+                {
+                    return ob;
+                }
+            } 
+         }
+         
+         return ob;
+    }
+
     public void update (GameMap gameMap, List<Move> outMoves){
         turn ++;
         outMoves.clear ();
