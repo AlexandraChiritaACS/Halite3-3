@@ -18,8 +18,55 @@ class Util{
 }
 
 class Intel {
-    public int getMiningPlanet (GameMap gameMap, Map<Integer, Pilot> pilotsMap, Pilot pilot){
-        return -1;
+
+    static public int getNumSent(Map<Integer, Pilot> pilotMap, GameMap gameMap, int planetId)
+    {
+        int num = 0;
+        for(Map.Entry<Integer, Pilot> entry : pilotMap.entrySet())
+        {
+            Goal goal = entry.getValue().goal;
+            if(goal.isOnRouteToPlanet(planetId))
+            {
+                num ++;
+            }
+        }
+        return num;
+    }
+
+    static public int getMiningPlanet (GameMap gameMap, Map<Integer, Pilot> pilotMap, Pilot pilot)
+    {
+        double minim = 9999999;
+        int nearestPlanetId = -1;
+        for(final Planet planet : gameMap.getAllPlanets().values())
+        {
+            // skip if planet is owned by enemies
+            List<Integer> dockedShipIds = planet.getDockedShips();
+            Set<Integer> playerShipIds = gameMap.getMyPlayer().getShips().keySet();
+            if(dockedShipIds.size () > 0 && !playerShipIds.contains(dockedShipIds.get(0)))
+                continue;
+
+            // skip if planet is full
+            if(planet.isFull())
+                continue;
+
+            // skip if there are no more docking spaces available
+            int numSent = getNumSent(pilotMap, gameMap, planet.getId());
+            int numDocked = planet.getDockedShips().size ();
+            int numDockingSpots = planet.getDockingSpots ();
+            Log.log ("numSent " + numSent);
+            if(numSent + numDocked >= numDockingSpots )
+                continue;
+
+            double distance = pilot.getShip(gameMap).getDistanceTo(planet);
+            if(distance < minim)
+            {
+                minim = distance;
+                nearestPlanetId = planet.getId();
+            }
+
+        }
+
+        return nearestPlanetId;
     }
 }
 
@@ -53,9 +100,10 @@ class GoMineGoal extends Goal {
     public GoMineGoal (GameMap gameMap, Pilot pilot, int planetId){
         this.planetId = planetId;
         double planetRadius = gameMap.getPlanet (planetId).getRadius ();
+        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, pilot, this, planetRadius + 2.0, planetId);
         dockPlanetTask = new DockPlanetTask (DOCK_PLANET, pilot, this, planetId);
-        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, pilot, this, planetRadius + 1.0, planetId);
         currentTask = gotoPlanetTask;
+        Log.log ("pilot for shipId " + pilot.shipId + " mining from planetId " + planetId);
     }
 
     @Override
@@ -162,11 +210,11 @@ abstract class GoToTask extends Task{
             Task newTask = goal.taskCompleted();
             return newTask != null ? newTask.update(gameMap) : null;
         }
-        int speed = Constants.MAX_SPEED;
+        int speed = Math.min ((int)(distance - radius + 1.0), Constants.MAX_SPEED);
         if (distance - (double)speed < radius){
             speed = (int)Math.ceil ((distance - radius));
         }
-        return Navigation.navigateShipTowardsTarget (gameMap, ship, target, speed, true, 90, Math.PI / 180.f * 3.0f);
+        return Navigation.navigateShipTowardsTarget (gameMap, ship, target, speed, true, 90, Math.PI / 180.f * 5.0f);
     }
 }
 
@@ -207,6 +255,7 @@ class DockPlanetTask extends Task {
 
     DockPlanetTask(String name, Pilot pilot, Goal goal, int planetId) {
         super(name, pilot, goal);
+        this.planetId = planetId;
     }
 
     @Override
@@ -215,7 +264,7 @@ class DockPlanetTask extends Task {
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
         Planet planet = gameMap.getPlanet (planetId);
         numUpdates ++;
-        if (numUpdates > 5){
+        if (numUpdates > 10){
             Task newTask = goal.taskCompleted();
             return newTask != null ? newTask.update(gameMap) : null;
         }
@@ -227,26 +276,29 @@ class Pilot {
     public int shipId;
     public Goal goal;
 
-    public Pilot (GameMap gameMap, int shipId){
+    public Pilot (GameMap gameMap, int shipId, Map<Integer, Pilot> pilotsMap){
         this.shipId = shipId;
 
-        // gather the attack data
-        List<Player> players = gameMap.getAllPlayers ();
-        Player myPlayer = gameMap.getMyPlayer ();
-        int attackPlayerId = -1;
-        Player attackPlayer = myPlayer;
-        while (attackPlayerId == -1){
-            int randomIndex = Util.getRandom(0, players.size ());
-            Player player = players.get (randomIndex);
-            if (player != myPlayer) {
-                attackPlayerId = player.getId();
-                attackPlayer = player;
-            }
-        }
-        int attackShipId = attackPlayer.getShips ().values ().iterator ().next ().getId ();
+//        // gather the attack data
+//        List<Player> players = gameMap.getAllPlayers ();
+//        Player myPlayer = gameMap.getMyPlayer ();
+//        int attackPlayerId = -1;
+//        Player attackPlayer = myPlayer;
+//        while (attackPlayerId == -1){
+//            int randomIndex = Util.getRandom(0, players.size ());
+//            Player player = players.get (randomIndex);
+//            if (player != myPlayer) {
+//                attackPlayerId = player.getId();
+//                attackPlayer = player;
+//            }
+//        }
+//        int attackShipId = attackPlayer.getShips ().values ().iterator ().next ().getId ();
+//
+//        Log.log ("attack playerId " + attackPlayerId + " shipId " + attackShipId);
+//        goal = new GoAttackGoal (gameMap, this, attackPlayerId, attackShipId, true);
+        int planetId = Intel.getMiningPlanet(gameMap, pilotsMap, this);
 
-        Log.log ("attack playerId " + attackPlayerId + " shipId " + attackShipId);
-        goal = new GoAttackGoal (gameMap, this, attackPlayerId, attackShipId, true);
+        goal = new GoMineGoal (gameMap, this, planetId);
         Log.log ("Constructing pilot for ship " + shipId);
     }
 
@@ -284,7 +336,7 @@ public class MyBot {
         // construct new pilotsMap
         for (int shipId : shipIds){
             if(!pilotShipIds.contains (shipId)){
-                Pilot pilot = new Pilot (gameMap, shipId);
+                Pilot pilot = new Pilot (gameMap, shipId, pilotsMap);
                 pilotsMap.put (shipId, pilot);
             }
         }
