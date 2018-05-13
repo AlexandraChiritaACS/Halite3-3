@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Collection;
 import java.util.Set;
+import java.util.TreeMap;
 import java.io.StringWriter;
 import java.io.PrintWriter;
 import hlt.Move;
@@ -17,10 +18,38 @@ class Util{
     }
 }
 
+class Obj {
+        public int shipId;
+        public int playerId;
+
+        public Obj() {
+            shipId = 0;
+            playerId = 0;
+        }
+    };
+
+
 class GameManager {
     public Map<Integer, Pilot> pilotsMap = new HashMap <>();
     public int turn;
     public int goals;
+
+    public Obj closestShip(GameMap gameMap, Pilot pilot)
+    {
+         Obj ob = new Obj();
+         Map<Double, Entity> entityByDistance = new TreeMap<>();
+         entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
+         for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
+         {
+            if((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId()))
+            {
+                ob.shipId = entry.getValue().getId();
+                ob.playerId = entry.getValue().getOwner();
+            } 
+         }
+         
+         return ob;
+    }
 
     public void update (GameMap gameMap, List<Move> outMoves){
         turn ++;
