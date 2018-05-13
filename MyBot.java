@@ -31,7 +31,7 @@ class GameManager {
         // construct new pilotsMap
         for (int shipId : shipIds){
             if(!pilotShipIds.contains (shipId)){
-                Pilot pilot = new Pilot (this, gameMap, shipId, pilotsMap);
+                Pilot pilot = new Pilot (this, gameMap, shipId);
                 pilotsMap.put (shipId, pilot);
             }
         }
@@ -58,12 +58,53 @@ class GameManager {
                 outMoves.add (move);
             }
         }
+
+        processSelfCollision (outMoves);
     }
 
-    public int getNumSent(Map<Integer, Pilot> pilotMap, GameMap gameMap, int planetId)
+    public void processSelfCollision (List<Move> moves){
+        for (int i = 0; i < moves.size (); i ++){
+            Move move = moves.get (i);
+            if (!(move instanceof ThrustMove))
+                continue;
+            ThrustMove thrustMove = (ThrustMove)move;
+            Ship ship = move.getShip ();
+            double angle = (double)thrustMove.getAngle() * Math.PI / 180.0f;
+            double jump = (double)thrustMove.getThrust ();
+            double x = ship.getXPos () + Math.cos (angle) * jump;
+            double y = ship.getYPos () + Math.sin (angle) * jump;
+            Log.log ("angle " + thrustMove.getAngle ());
+
+            for (Move otherMove : moves){
+                if (!(otherMove instanceof ThrustMove))
+                    continue;
+                if (move == otherMove)
+                    continue;
+                ThrustMove otherThrustMove = (ThrustMove)otherMove;
+                Ship otherShip = otherMove.getShip ();
+                double otherAngle = (double)otherThrustMove.getAngle() * Math.PI / 180.0f;
+                double otherJump = (double)otherThrustMove.getThrust ();
+                double otherX = otherShip.getXPos () + Math.cos (otherAngle) * otherJump;
+                double otherY = otherShip.getYPos () + Math.sin (otherAngle) * otherJump;
+
+                double dx = (x - otherX);
+                double dy = (y - otherY);
+                double dist = Math.sqrt (dx * dx + dy * dy);
+                Log.log ("dist " + dist);
+
+                if (dist < Constants.SHIP_RADIUS * 6.1){
+                    Log.log ("coll " + dist);
+                    move = new ThrustMove (ship, thrustMove.getAngle (), 0);
+                    moves.set (i, move);
+                }
+            }
+        }
+    }
+
+    public int getNumSent(GameMap gameMap, int planetId)
     {
         int num = 0;
-        for(Map.Entry<Integer, Pilot> entry : pilotMap.entrySet())
+        for(Map.Entry<Integer, Pilot> entry : pilotsMap.entrySet())
         {
             Goal goal = entry.getValue().goal;
             if(goal.isOnRouteToPlanet(planetId))
@@ -74,7 +115,7 @@ class GameManager {
         return num;
     }
 
-    public int getMiningPlanet (GameMap gameMap, Map<Integer, Pilot> pilotMap, Pilot pilot)
+    public int getMiningPlanet (GameMap gameMap, Pilot pilot)
     {
         double minim = 9999999;
         int nearestPlanetId = -1;
@@ -91,10 +132,9 @@ class GameManager {
                 continue;
 
             // skip if there are no more docking spaces available
-            int numSent = getNumSent(pilotMap, gameMap, planet.getId());
+            int numSent = getNumSent(gameMap, planet.getId());
             int numDocked = planet.getDockedShips().size ();
             int numDockingSpots = planet.getDockingSpots ();
-            Log.log ("numSent " + numSent);
             if(numSent + numDocked >= numDockingSpots )
                 continue;
 
@@ -140,11 +180,9 @@ class GoMineGoal extends Goal {
 
     public GoMineGoal (GameManager gameManager, GameMap gameMap, Pilot pilot, int planetId){
         this.planetId = planetId;
-        double planetRadius = gameMap.getPlanet (planetId).getRadius ();
-        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetRadius + 2.0, planetId);
+        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId);
         dockPlanetTask = new DockPlanetTask (DOCK_PLANET, gameManager, gameMap, pilot, this, planetId);
         currentTask = gotoPlanetTask;
-        Log.log ("pilot for shipId " + pilot.shipId + " mining from planetId " + planetId);
     }
 
     @Override
@@ -260,16 +298,26 @@ abstract class GoToTask extends Task{
 
 class GoToPlanetTask extends GoToTask{
     public int planetId;
+    public Position dockPosition;
 
-    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, double radius, int planetId){
-        super(name, gameManager, gameMap, pilot, goal, radius);
+    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId){
+        super(name, gameManager, gameMap, pilot, goal, 2.0);
 
         this.planetId = planetId;
+
+        Planet planet = gameMap.getPlanet (planetId);
+        int numDocked = planet.getDockedShips().size ();
+        int numOnRoute = gameManager.getNumSent(gameMap, planetId);
+        int numDockSpots = planet.getDockingSpots();
+        double angle = (double)(numDocked + numOnRoute) / (double)numDockSpots * Math.PI * 2.0;
+        double radius = planet.getRadius ();
+        dockPosition = new Position (planet.getXPos() + Math.cos (angle) * radius, planet.getYPos () + Math.sin (angle) * radius);
     }
 
     @Override
     Position getTarget(GameMap gameMap) {
-        return gameMap.getPlanet (planetId);
+        Planet planet = gameMap.getPlanet (planetId);
+        return planet != null ? dockPosition : null;
     }
 }
 
@@ -307,6 +355,7 @@ class DockPlanetTask extends Task {
         if (numUpdates > 5){
             return goal.taskCompleted(gameManager, gameMap);
         }
+        Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
         return new DockMove (ship, planet);
     }
 }
@@ -315,7 +364,7 @@ class Pilot {
     public int shipId;
     public Goal goal;
 
-    public Pilot (GameManager gameManager, GameMap gameMap, int shipId, Map<Integer, Pilot> pilotsMap){
+    public Pilot (GameManager gameManager, GameMap gameMap, int shipId){
         this.shipId = shipId;
 
 //        // gather the attack data
@@ -335,7 +384,7 @@ class Pilot {
 //
 //        Log.log ("attack playerId " + attackPlayerId + " shipId " + attackShipId);
 //        goal = new GoAttackGoal (gameMap, this, attackPlayerId, attackShipId, true);
-        int planetId = gameManager.getMiningPlanet(gameMap, pilotsMap, this);
+        int planetId = gameManager.getMiningPlanet(gameMap, this);
 
         goal = new GoMineGoal (gameManager, gameMap, this, planetId);
         Log.log ("Constructing pilot for ship " + shipId);
