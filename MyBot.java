@@ -57,19 +57,25 @@ class GameManager {
     public int secondClosestPlanet(GameMap gameMap, Pilot pilot)
     {
         int idPlanet = -1;
-        int nr = 0;
         Map<Double, Entity> entityByDistance = new TreeMap<>();
         entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
         for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
         {
-            if(entry.getValue() instanceof Planet)
+            if((entry.getValue() instanceof Planet) && (((Planet)entry.getValue()).isFull()))
+            {
+                continue;
+            }
+
+            if((entry.getValue() instanceof Planet) && (!((Planet)entry.getValue()).isOwned()))
             {
                 idPlanet = entry.getValue().getId();
-                nr++;
-                if(nr == 2)
-                {
-                    return idPlanet;
-                }
+                return idPlanet;
+            }
+
+            if((entry.getValue() instanceof Planet) && (entry.getValue().getOwner() == gameMap.getMyPlayerId()) && (!((Planet)entry.getValue()).isFull()))
+            {
+                idPlanet = entry.getValue().getId();
+                return idPlanet;
             }
         }
 
