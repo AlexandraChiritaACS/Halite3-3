@@ -261,6 +261,13 @@ class GoMineGoal extends Goal {
     @Override
     public Move alarm(GameManager gameManager, GameMap gameMap, String issue) {
         super.alarm(gameManager, gameMap, issue);
+        switch (issue){
+            case Task.ISSUE_NO_TARGET:{
+                Pilot pilot = currentTask.pilot;
+                pilot.goal = gameManager.getGoal(gameMap, pilot);
+                return pilot.goal.update(gameManager, gameMap);
+            }
+        }
         return null;
     }
 
@@ -373,8 +380,17 @@ class DefentPlanetGoal extends Goal {
                 return currentTask.update(gameManager, gameMap);
             }
             case Task.ISSUE_NO_TARGET:{
-                currentTask = goToPlanetTask;
-                return currentTask.update(gameManager, gameMap);
+                Pilot pilot = currentTask.pilot;
+                switch (currentTask.name){
+                    case GO_TO_SHIP:{
+                        currentTask = goToPlanetTask;
+                        return currentTask.update(gameManager, gameMap);
+                    }
+                    default:{
+                        pilot.goal = gameManager.getGoal(gameMap, pilot);
+                        return pilot.goal.update(gameManager, gameMap);
+                    }
+                }
             }
         }
         return null;
@@ -483,7 +499,7 @@ class DockPlanetTask extends Task {
         if (numUpdates > 5){
             return goal.taskCompleted(gameManager, gameMap);
         }
-        Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
+//        Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
         return new DockMove (ship, planet);
     }
 }
@@ -491,6 +507,7 @@ class DockPlanetTask extends Task {
 class PatrolPlanetTask extends Task {
     int planetId;
     double radius;
+    double dir = 10.0;
 
     PatrolPlanetTask(String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId, double radius) {
         super(name, gameManager, gameMap, pilot, goal);
@@ -516,10 +533,23 @@ class PatrolPlanetTask extends Task {
             }
         }
 
-        double angle = (double)(planet.orientTowardsInDeg (ship) + 10) * Math.PI / 180.0f;
-        Position target = new Position (planet.getXPos () + Math.cos (angle) * radius, planet.getYPos () + Math.sin (angle) * radius);
+        int speed = 3;
+        double width = (double)gameMap.getWidth ();
+        double height = (double)gameMap.getHeight ();
+        double angle = (double)(planet.orientTowardsInDeg (ship) + dir) * Math.PI / 180.0f;
+        double x = planet.getXPos () + Math.cos (angle) * radius;
+        double y = planet.getYPos () + Math.sin (angle) * radius;
+        double pading = 4.0;
+        if ((x < pading) || (y < pading) || (x >= width - pading) || (y >= height - pading)){
+            dir = -dir;
+            angle = (double)(planet.orientTowardsInDeg (ship) + dir) * Math.PI / 180.0f;
+            x = planet.getXPos () + Math.cos (angle) * radius;
+            y = planet.getYPos () + Math.sin (angle) * radius;
+        }
 
-        return Navigation.navigateShipTowardsTarget (gameMap, ship, target, 3, true, 90, Math.PI / 180.f * 5.0f);
+        Position target = new Position (x, y);
+
+        return Navigation.navigateShipTowardsTarget (gameMap, ship, target, speed, true, 90, Math.PI / 180.f * 5.0f);
     }
 }
 
