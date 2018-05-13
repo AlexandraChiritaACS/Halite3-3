@@ -72,12 +72,27 @@ class GameManager {
                 return idPlanet;
             }
 
+            // if((entry.getValue() instanceof Planet) && (entry.getValue().getOwner() == gameMap.getMyPlayerId()) && (!((Planet)entry.getValue()).isFull()))
+            // {
+            //     idPlanet = entry.getValue().getId();
+            //     return idPlanet;
+            // }
+        }
+
+        for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
+        {
+            if((entry.getValue() instanceof Planet) && (((Planet)entry.getValue()).isFull()))
+            {
+                continue;
+            }
+
             if((entry.getValue() instanceof Planet) && (entry.getValue().getOwner() == gameMap.getMyPlayerId()) && (!((Planet)entry.getValue()).isFull()))
             {
                 idPlanet = entry.getValue().getId();
                 return idPlanet;
             }
         }
+        
 
         return idPlanet;
     }
