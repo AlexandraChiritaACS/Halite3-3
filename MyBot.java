@@ -31,8 +31,8 @@ class GoMineGoal extends Goal {
     public GoMineGoal (GameMap gameMap, Pilot pilot, int planetId){
         this.planetId = planetId;
         double planetRadius = gameMap.getPlanet (planetId).getRadius ();
-        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, pilot, this, planetRadius + 1.0, planetId);
         dockPlanetTask = new DockPlanetTask (DOCK_PLANET, pilot, this, planetId);
+        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, pilot, this, planetRadius + 1.0, planetId);
         currentTask = gotoPlanetTask;
     }
 
@@ -91,7 +91,8 @@ abstract class GoToTask extends Task{
         }
         double distance = ship.getDistanceTo (target);
         if (distance <= radius){
-            return goal.taskCompleted(this).update(gameMap);
+            Task newTask = goal.taskCompleted(this);
+            return newTask != null ? newTask.update(gameMap) : null;
         }
         int speed = Constants.MAX_SPEED;
         if (distance - (double)speed < radius){
@@ -118,6 +119,7 @@ class GoToPlanetTask extends GoToTask{
 
 class DockPlanetTask extends Task {
     public int planetId;
+    public int numUpdates;
 
     DockPlanetTask(String name, Pilot pilot, Goal goal, int planetId) {
         super(name, pilot, goal);
@@ -128,6 +130,11 @@ class DockPlanetTask extends Task {
         int playerId = gameMap.getMyPlayerId ();
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
         Planet planet = gameMap.getPlanet (planetId);
+        numUpdates ++;
+        if (numUpdates > 5){
+            Task newTask = goal.taskCompleted(this);
+            return newTask != null ? newTask.update(gameMap) : null;
+        }
         return new DockMove (ship, planet);
     }
 }
