@@ -19,8 +19,11 @@ class Util{
 
 class GameManager {
     public Map<Integer, Pilot> pilotsMap = new HashMap <>();
+    public int turn;
+    public int goals;
 
     public void update (GameMap gameMap, List<Move> outMoves){
+        turn ++;
         outMoves.clear ();
         Player myPlayer = gameMap.getMyPlayer ();
         //==================
@@ -90,10 +93,8 @@ class GameManager {
                 double dx = (x - otherX);
                 double dy = (y - otherY);
                 double dist = Math.sqrt (dx * dx + dy * dy);
-                Log.log ("dist " + dist);
 
                 if (dist < Constants.SHIP_RADIUS * 6.1){
-                    Log.log ("coll " + dist);
                     move = new ThrustMove (ship, thrustMove.getAngle (), 0);
                     moves.set (i, move);
                 }
@@ -148,6 +149,32 @@ class GameManager {
         }
 
         return nearestPlanetId;
+    }
+
+    public Goal getGoal (GameMap gameMap, Pilot pilot){
+        goals ++;
+        if (1 == turn){
+            int planetId = getMiningPlanet(gameMap, pilot);
+            if (goals <= 2){
+                return new GoMineGoal (this, gameMap, pilot, planetId);
+            }
+        }
+        // gather the attack data
+        List<Player> players = gameMap.getAllPlayers ();
+        Player myPlayer = gameMap.getMyPlayer ();
+        int attackPlayerId = -1;
+        Player attackPlayer = myPlayer;
+        while (attackPlayerId == -1){
+            int randomIndex = Util.getRandom(0, players.size ());
+            Player player = players.get (randomIndex);
+            if (player != myPlayer) {
+                attackPlayerId = player.getId();
+                attackPlayer = player;
+            }
+        }
+        int attackShipId = attackPlayer.getShips ().values ().iterator ().next ().getId ();
+
+        return new GoAttackGoal (this, gameMap, pilot, attackPlayerId, attackShipId, true);
     }
 }
 
@@ -359,27 +386,10 @@ class Pilot {
     public Pilot (GameManager gameManager, GameMap gameMap, int shipId){
         this.shipId = shipId;
 
-//        // gather the attack data
-//        List<Player> players = gameMap.getAllPlayers ();
-//        Player myPlayer = gameMap.getMyPlayer ();
-//        int attackPlayerId = -1;
-//        Player attackPlayer = myPlayer;
-//        while (attackPlayerId == -1){
-//            int randomIndex = Util.getRandom(0, players.size ());
-//            Player player = players.get (randomIndex);
-//            if (player != myPlayer) {
-//                attackPlayerId = player.getId();
-//                attackPlayer = player;
-//            }
-//        }
-//        int attackShipId = attackPlayer.getShips ().values ().iterator ().next ().getId ();
-//
-//        Log.log ("attack playerId " + attackPlayerId + " shipId " + attackShipId);
-//        goal = new GoAttackGoal (gameMap, this, attackPlayerId, attackShipId, true);
         int planetId = gameManager.getMiningPlanet(gameMap, this);
 
-        goal = new GoMineGoal (gameManager, gameMap, this, planetId);
-        Log.log ("Constructing pilot for ship " + shipId);
+        goal = gameManager.getGoal(gameMap, this);
+        Log.log ("Constructing pilot for ship " + shipId + " with goal " + goal.getClass ().toString ());
     }
 
     public Ship getShip (GameMap gameMap){
