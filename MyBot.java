@@ -180,7 +180,9 @@ class GoMineGoal extends Goal {
 
     public GoMineGoal (GameManager gameManager, GameMap gameMap, Pilot pilot, int planetId){
         this.planetId = planetId;
-        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId);
+        Planet planet = gameMap.getPlanet (planetId);
+        double radius = planet.getRadius ();
+        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, radius + 2.0);
         dockPlanetTask = new DockPlanetTask (DOCK_PLANET, gameManager, gameMap, pilot, this, planetId);
         currentTask = gotoPlanetTask;
     }
@@ -298,26 +300,16 @@ abstract class GoToTask extends Task{
 
 class GoToPlanetTask extends GoToTask{
     public int planetId;
-    public Position dockPosition;
 
-    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId){
-        super(name, gameManager, gameMap, pilot, goal, 2.0);
-
+    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId, double radius){
+        super(name, gameManager, gameMap, pilot, goal, radius);
         this.planetId = planetId;
 
-        Planet planet = gameMap.getPlanet (planetId);
-        int numDocked = planet.getDockedShips().size ();
-        int numOnRoute = gameManager.getNumSent(gameMap, planetId);
-        int numDockSpots = planet.getDockingSpots();
-        double angle = (double)(numDocked + numOnRoute) / (double)numDockSpots * Math.PI * 2.0;
-        double radius = planet.getRadius ();
-        dockPosition = new Position (planet.getXPos() + Math.cos (angle) * radius, planet.getYPos () + Math.sin (angle) * radius);
     }
 
     @Override
     Position getTarget(GameMap gameMap) {
-        Planet planet = gameMap.getPlanet (planetId);
-        return planet != null ? dockPosition : null;
+        return gameMap.getPlanet (planetId);
     }
 }
 
