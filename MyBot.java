@@ -35,19 +35,30 @@ class GameManager {
     public int goals;
     public int firstPlanetId = -1;
 
-    public ShipInfo closestShip(GameMap gameMap, Pilot pilot)
+    public ShipInfo closestShip(GameMap gameMap, Pilot pilot, boolean onlyDocked)
     {
          ShipInfo ob = new ShipInfo();
          Map<Double, Entity> entityByDistance = new TreeMap<>();
          entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
-         for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
-         {
-            if((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId()))
-            {
-                ob.shipId = entry.getValue().getId();
-                ob.playerId = entry.getValue().getOwner();
-                return ob;
-            } 
+         if (onlyDocked){
+             for (Map.Entry<Double, Entity> entry : entityByDistance.entrySet()) {
+                 if ((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId())) {
+                     Ship ship = (Ship)entry.getValue();
+                     if (ship.getDockingStatus () == Ship.DockingStatus.Undocked)
+                         continue;
+                     ob.shipId = entry.getValue().getId();
+                     ob.playerId = entry.getValue().getOwner();
+                     return ob;
+                 }
+             }
+         } else {
+             for (Map.Entry<Double, Entity> entry : entityByDistance.entrySet()) {
+                 if ((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId())) {
+                     ob.shipId = entry.getValue().getId();
+                     ob.playerId = entry.getValue().getOwner();
+                     return ob;
+                 }
+             }
          }
          
          return ob;
@@ -229,17 +240,28 @@ class GameManager {
 
     public Goal getGoal (GameMap gameMap, Pilot pilot){
         goals ++;
+        // start of the game
         if (1 == turn){
             if (firstPlanetId == -1)
                 firstPlanetId = getMiningPlanet(gameMap, pilot);
             if (goals <= 2){
+                Log.log ("pilot for ship " + pilot.shipId + " goal GoMineGoal");
                 return new GoMineGoal (this, gameMap, pilot, firstPlanetId);
             }
+            Log.log ("pilot for ship " + pilot.shipId + " goal DefentPlanetGoal");
             return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
         }
 
-        int planetId = secondClosestPlanet(gameMap, pilot);
-        return new GoMineGoal (this, gameMap, pilot, planetId);
+        // spawned ships
+        if (0 == (goals % 3)){
+            ShipInfo shipInfo = closestShip(gameMap, pilot, true);
+            Log.log ("pilot for ship " + pilot.shipId + " goal GoAttackGoal");
+            return new GoAttackGoal (this, gameMap, pilot, shipInfo.playerId, shipInfo.shipId, false);
+        } else {
+            int planetId = secondClosestPlanet(gameMap, pilot);
+            Log.log ("pilot for ship " + pilot.shipId + " goal GoMineGoal");
+            return new GoMineGoal(this, gameMap, pilot, planetId);
+        }
     }
 }
 
@@ -274,7 +296,7 @@ class GoMineGoal extends Goal {
         this.planetId = planetId;
         Planet planet = gameMap.getPlanet (planetId);
         double radius = planet.getRadius ();
-        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, radius + 2.0);
+        gotoPlanetTask = new GoToPlanetTask (GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, radius + 2.0, true);
         dockPlanetTask = new DockPlanetTask (DOCK_PLANET, gameManager, gameMap, pilot, this, planetId);
         currentTask = gotoPlanetTask;
     }
@@ -372,7 +394,7 @@ class DefentPlanetGoal extends Goal {
     DefentPlanetGoal (GameManager gameManager, GameMap gameMap, Pilot pilot, int planetId){
         Planet planet = gameMap.getPlanet (planetId);
         double radius = 20.0;
-        goToPlanetTask = new GoToPlanetTask(GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, planet.getRadius () + radius);
+        goToPlanetTask = new GoToPlanetTask(GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, planet.getRadius () + radius, false);
         patrolPlanetTask = new PatrolPlanetTask(PATROL_PLANET, gameManager, gameMap, pilot, this, planetId, radius);
         currentTask = goToPlanetTask;
     }
@@ -396,7 +418,7 @@ class DefentPlanetGoal extends Goal {
         super.alarm(gameManager, gameMap, issue);
         switch (issue){
             case Task.ISSUE_ENEMY_CLOSE:{
-                ShipInfo shipInfo = gameManager.closestShip (gameMap, currentTask.pilot);
+                ShipInfo shipInfo = gameManager.closestShip (gameMap, currentTask.pilot, false);
                 currentTask = new GoToShipTask (GO_TO_SHIP, gameManager, gameMap, currentTask.pilot, this, Constants.SHIP_RADIUS * 2.0, shipInfo.playerId, shipInfo.shipId);
                 return currentTask.update(gameManager, gameMap);
             }
@@ -473,16 +495,29 @@ abstract class GoToTask extends Task{
 
 class GoToPlanetTask extends GoToTask{
     public int planetId;
+    public boolean forDocking;
 
-    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId, double radius){
+    GoToPlanetTask (String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId, double radius, boolean forDocking){
         super(name, gameManager, gameMap, pilot, goal, radius);
         this.planetId = planetId;
-
+        this.forDocking = forDocking;
     }
 
     @Override
     Position getTarget(GameMap gameMap) {
         return gameMap.getPlanet (planetId);
+    }
+
+    @java.lang.Override
+    public Move update(GameManager gameManager, GameMap gameMap) {
+
+        Planet planet = gameMap.getPlanet (planetId);
+        int myPlayerId = gameMap.getMyPlayerId ();
+        if (planet.isOwned () && planet.getOwner () != myPlayerId){
+            return goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
+        }
+
+        return super.update(gameManager, gameMap);
     }
 }
 
@@ -516,11 +551,14 @@ class DockPlanetTask extends Task {
         int playerId = gameMap.getMyPlayerId ();
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
         Planet planet = gameMap.getPlanet (planetId);
+        if (planet.isOwned () && planet.getOwner () != playerId){
+            goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
+        }
         numUpdates ++;
         if (numUpdates > 5){
             return goal.taskCompleted(gameManager, gameMap);
         }
-//        Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
+        Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
         return new DockMove (ship, planet);
     }
 }
@@ -545,7 +583,7 @@ class PatrolPlanetTask extends Task {
 
         int playerId = gameMap.getMyPlayerId ();
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
-        ShipInfo shipInfo = gameManager.closestShip (gameMap, pilot);
+        ShipInfo shipInfo = gameManager.closestShip (gameMap, pilot, false);
         if (shipInfo.shipId != -1){
             Ship enemy = gameMap.getShip (shipInfo.playerId, shipInfo.shipId);
             double distance = enemy.getDistanceTo (ship);
