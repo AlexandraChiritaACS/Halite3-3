@@ -10,6 +10,66 @@ import java.io.StringWriter;
 import java.io.PrintWriter;
 import hlt.Move;
 
+class Intel {
+
+    public boolean alreadySend(Map<Integer, Pilot> pilotMap, GameMap gameMap, int planetId)
+    {
+        for(Map.Entry<Integer, Pilot> entry : pilotMap.entrySet())
+        {
+            Goal goal = entry.getValue().goal;
+            if((goal instanceof GoMineGoal) && (((GoMineGoal)goal).planetId == planetId))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public int getMiningPlanet (GameMap gameMap, Map<Integer, Pilot> pilotMap, Pilot pilot)
+    {
+        List<Integer> naveAdverse = new ArrayList<>();
+        double minim = 9999999;
+        int nearestPlanetId = -1;
+        for(final Planet planet : gameMap.getAllPlanets().values())
+        {
+
+            if(alreadySend(pilotMap, gameMap, planet.getId()) == true)
+            {
+                continue;
+            }
+
+            if(planet.isFull())
+            {
+                continue;
+            }
+        
+            
+            naveAdverse = planet.getDockedShips();
+            Set<Integer> idNave = gameMap.getMyPlayer().getShips().keySet();
+
+            if(idNave.contains(naveAdverse.get(0)))
+            {
+                continue;
+            }
+        
+    
+            double distance = pilot.getShip(gameMap).getDistanceTo(planet);
+            if(distance < minim)
+            {
+                minim = distance;
+                nearestPlanetId = planet.getId();
+            }
+            
+            
+        }
+
+        return nearestPlanetId;
+    }
+}
+
+
+
+
 abstract class Goal {
     public Task currentTask;
 
@@ -152,6 +212,11 @@ class Pilot {
         count ++;
         goal = new GoMineGoal (gameMap, this, planetId);
         Log.log ("Constructing pilot for ship " + shipId);
+    }
+
+    public Ship getShip (GameMap gameMap){
+        Player myPlayer = gameMap.getMyPlayer ();
+        return myPlayer.getShip (shipId);
     }
 
     public void die (){
