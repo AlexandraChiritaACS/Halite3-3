@@ -21,6 +21,7 @@ class GameManager {
     public Map<Integer, Pilot> pilotsMap = new HashMap <>();
     public int turn;
     public int goals;
+    public int firstPlanetId = -1;
 
     public void update (GameMap gameMap, List<Move> outMoves){
         turn ++;
@@ -154,27 +155,15 @@ class GameManager {
     public Goal getGoal (GameMap gameMap, Pilot pilot){
         goals ++;
         if (1 == turn){
-            int planetId = getMiningPlanet(gameMap, pilot);
+            if (firstPlanetId == -1)
+                firstPlanetId = getMiningPlanet(gameMap, pilot);
             if (goals <= 2){
-                return new GoMineGoal (this, gameMap, pilot, planetId);
+                return new GoMineGoal (this, gameMap, pilot, firstPlanetId);
             }
+            return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
         }
-        // gather the attack data
-        List<Player> players = gameMap.getAllPlayers ();
-        Player myPlayer = gameMap.getMyPlayer ();
-        int attackPlayerId = -1;
-        Player attackPlayer = myPlayer;
-        while (attackPlayerId == -1){
-            int randomIndex = Util.getRandom(0, players.size ());
-            Player player = players.get (randomIndex);
-            if (player != myPlayer) {
-                attackPlayerId = player.getId();
-                attackPlayer = player;
-            }
-        }
-        int attackShipId = attackPlayer.getShips ().values ().iterator ().next ().getId ();
 
-        return new GoAttackGoal (this, gameMap, pilot, attackPlayerId, attackShipId, true);
+        return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
     }
 }
 
@@ -199,8 +188,8 @@ abstract class Goal {
 }
 
 class GoMineGoal extends Goal {
-    public final transient String GO_TO_PLANET = "GoToPlanet";
-    public final transient String DOCK_PLANET = "DockPlanet";
+    public static final transient String GO_TO_PLANET = "GoToPlanet";
+    public static final transient String DOCK_PLANET = "DockPlanet";
     public int planetId;
     public GoToPlanetTask gotoPlanetTask;
     public DockPlanetTask dockPlanetTask;
@@ -271,6 +260,13 @@ class GoAttackGoal extends Goal {
     @Override
     public Move alarm(GameManager gameManager, GameMap gameMap, String issue) {
         super.alarm(gameManager, gameMap, issue);
+        Pilot pilot = goToShipTask.pilot;
+        switch (issue){
+            case GoToTask.ISSUE_NO_TARGET:{
+                pilot.goal = gameManager.getGoal(gameMap, pilot);
+                return pilot.goal.update(gameManager, gameMap);
+            }
+        }
         return null;
     }
 
@@ -280,7 +276,54 @@ class GoAttackGoal extends Goal {
     }
 }
 
+class DefentPlanetGoal extends Goal {
+    public static final transient String GO_TO_PLANET = "GoToPlanet";
+    public static final transient String PATROL_PLANET = "GoToPlanet";
+    public static final transient String GO_TO_SHIP = "GoToShip";
+    int planetId;
+    int shipId;
+    int playerId;
+    GoToPlanetTask goToPlanetTask;
+    PatrolPlanetTask patrolPlanetTask;
+    GoToShipTask goToShipTask;
+
+    DefentPlanetGoal (GameManager gameManager, GameMap gameMap, Pilot pilot, int planetId){
+        Planet planet = gameMap.getPlanet (planetId);
+        double radius = 10.0;
+        goToPlanetTask = new GoToPlanetTask(GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, planet.getRadius () + radius);
+        patrolPlanetTask = new PatrolPlanetTask(PATROL_PLANET, gameManager, gameMap, pilot, this, planetId, radius);
+        currentTask = goToPlanetTask;
+    }
+
+    @Override
+    public Move taskCompleted(GameManager gameManager, GameMap gameMap) {
+        super.taskCompleted(gameManager, gameMap);
+        switch (currentTask.name){
+            case GO_TO_PLANET: {
+                currentTask = patrolPlanetTask;
+                return currentTask.update(gameManager, gameMap);
+            }
+            default:
+                currentTask = null;
+                return null;
+        }
+    }
+
+    @Override
+    public Move alarm(GameManager gameManager, GameMap gameMap, String issue) {
+        return super.alarm(gameManager, gameMap, issue);
+    }
+
+    @Override
+    public boolean isOnRouteToPlanet(int planetId) {
+        return false;
+    }
+
+}
+
 abstract class Task {
+    public static transient final String ISSUE_NO_TARGET = "NoTarget";
+
     public String name;
     public Pilot pilot;
     public Goal goal;
@@ -295,7 +338,6 @@ abstract class Task {
 }
 
 abstract class GoToTask extends Task{
-    public static transient final String ISSUE_NO_TARGET = "NoTarget";
     public double radius;
 
     GoToTask(String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, double radius) {
@@ -376,6 +418,33 @@ class DockPlanetTask extends Task {
         }
         Log.log ("ship " + pilot.shipId + " canDock to " + playerId + " : " + ship.canDock (planet));
         return new DockMove (ship, planet);
+    }
+}
+
+class PatrolPlanetTask extends Task {
+    int planetId;
+    double radius;
+
+    PatrolPlanetTask(String name, GameManager gameManager, GameMap gameMap, Pilot pilot, Goal goal, int planetId, double radius) {
+        super(name, gameManager, gameMap, pilot, goal);
+        this.planetId = planetId;
+        this.radius = radius;
+    }
+
+    @Override
+    Move update(GameManager gameManager, GameMap gameMap) {
+        Planet planet = gameMap.getPlanet (planetId);
+        if (null == planet){
+            return goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
+        }
+        int playerId = gameMap.getMyPlayerId ();
+        Ship ship = gameMap.getShip (playerId, pilot.shipId);
+
+
+        double angle = (double)(planet.orientTowardsInDeg (ship) + 10) * Math.PI / 180.0f;
+        Position target = new Position (planet.getXPos () + Math.cos (angle) * radius, planet.getYPos () + Math.sin (angle) * radius);
+
+        return Navigation.navigateShipTowardsTarget (gameMap, ship, target, 3, true, 90, Math.PI / 180.f * 5.0f);
     }
 }
 
