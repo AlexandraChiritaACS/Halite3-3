@@ -171,7 +171,6 @@ class GameManager {
             double jump = (double)thrustMove.getThrust ();
             double x = ship.getXPos () + Math.cos (angle) * jump;
             double y = ship.getYPos () + Math.sin (angle) * jump;
-            Log.log ("angle " + thrustMove.getAngle ());
 
             for (Move otherMove : moves){
                 if (!(otherMove instanceof ThrustMove))
@@ -253,22 +252,24 @@ class GameManager {
             if (firstPlanetId == -1)
                 firstPlanetId = getMiningPlanet(gameMap, pilot);
             if (goals <= 2){
-                Log.log ("pilot for ship " + pilot.shipId + " goal GoMineGoal");
                 return new GoMineGoal (this, gameMap, pilot, firstPlanetId);
             }
-            Log.log ("pilot for ship " + pilot.shipId + " goal DefentPlanetGoal");
             return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
         }
 
         // spawned ships
         if (numPilotsDocked > 3 && (0 == (goals % 3))) {
             ShipInfo shipInfo = closestShip(gameMap, pilot, true);
-            Log.log("pilot for ship " + pilot.shipId + " goal GoAttackGoal");
             return new GoAttackGoal(this, gameMap, pilot, shipInfo.playerId, shipInfo.shipId, false);
         } else {
             int planetId = secondClosestPlanet(gameMap, pilot);
-            Log.log("pilot for ship " + pilot.shipId + " goal GoMineGoal");
-            return new GoMineGoal(this, gameMap, pilot, planetId);
+            if (planetId != -1) {
+                return new GoMineGoal(this, gameMap, pilot, planetId);
+            } else {
+                ShipInfo shipInfo = closestShip(gameMap, pilot, true);
+                return new GoAttackGoal(this, gameMap, pilot, shipInfo.playerId, shipInfo.shipId, false);
+            }
+
         }
     }
 }
