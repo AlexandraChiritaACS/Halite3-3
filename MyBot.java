@@ -18,13 +18,13 @@ class Util{
     }
 }
 
-class Obj {
+class ShipInfo {
         public int shipId;
         public int playerId;
 
-        public Obj() {
-            shipId = 0;
-            playerId = 0;
+        public ShipInfo() {
+            shipId = -1;
+            playerId = -1;
         }
     };
 
@@ -35,9 +35,9 @@ class GameManager {
     public int goals;
     public int firstPlanetId = -1;
 
-    public Obj closestShip(GameMap gameMap, Pilot pilot)
+    public ShipInfo closestShip(GameMap gameMap, Pilot pilot)
     {
-         Obj ob = new Obj();
+         ShipInfo ob = new ShipInfo();
          Map<Double, Entity> entityByDistance = new TreeMap<>();
          entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
          for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
@@ -46,6 +46,7 @@ class GameManager {
             {
                 ob.shipId = entry.getValue().getId();
                 ob.playerId = entry.getValue().getOwner();
+                return ob;
             } 
          }
          
@@ -314,11 +315,10 @@ class DefentPlanetGoal extends Goal {
     int playerId;
     GoToPlanetTask goToPlanetTask;
     PatrolPlanetTask patrolPlanetTask;
-    GoToShipTask goToShipTask;
 
     DefentPlanetGoal (GameManager gameManager, GameMap gameMap, Pilot pilot, int planetId){
         Planet planet = gameMap.getPlanet (planetId);
-        double radius = 10.0;
+        double radius = 20.0;
         goToPlanetTask = new GoToPlanetTask(GO_TO_PLANET, gameManager, gameMap, pilot, this, planetId, planet.getRadius () + radius);
         patrolPlanetTask = new PatrolPlanetTask(PATROL_PLANET, gameManager, gameMap, pilot, this, planetId, radius);
         currentTask = goToPlanetTask;
@@ -340,7 +340,19 @@ class DefentPlanetGoal extends Goal {
 
     @Override
     public Move alarm(GameManager gameManager, GameMap gameMap, String issue) {
-        return super.alarm(gameManager, gameMap, issue);
+        super.alarm(gameManager, gameMap, issue);
+        switch (issue){
+            case Task.ISSUE_ENEMY_CLOSE:{
+                ShipInfo shipInfo = gameManager.closestShip (gameMap, currentTask.pilot);
+                currentTask = new GoToShipTask (GO_TO_SHIP, gameManager, gameMap, currentTask.pilot, this, Constants.SHIP_RADIUS * 2.0, shipInfo.playerId, shipInfo.shipId);
+                return currentTask.update(gameManager, gameMap);
+            }
+            case Task.ISSUE_NO_TARGET:{
+                currentTask = goToPlanetTask;
+                return currentTask.update(gameManager, gameMap);
+            }
+        }
+        return null;
     }
 
     @Override
@@ -352,6 +364,7 @@ class DefentPlanetGoal extends Goal {
 
 abstract class Task {
     public static transient final String ISSUE_NO_TARGET = "NoTarget";
+    public static transient final String ISSUE_ENEMY_CLOSE = "EnemyClose";
 
     public String name;
     public Pilot pilot;
@@ -466,9 +479,17 @@ class PatrolPlanetTask extends Task {
         if (null == planet){
             return goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
         }
+
         int playerId = gameMap.getMyPlayerId ();
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
-
+        ShipInfo shipInfo = gameManager.closestShip (gameMap, pilot);
+        if (shipInfo.shipId != -1){
+            Ship enemy = gameMap.getShip (shipInfo.playerId, shipInfo.shipId);
+            double distance = enemy.getDistanceTo (ship);
+            if (distance < 40.0){
+                return goal.alarm(gameManager, gameMap, ISSUE_ENEMY_CLOSE);
+            }
+        }
 
         double angle = (double)(planet.orientTowardsInDeg (ship) + 10) * Math.PI / 180.0f;
         Position target = new Position (planet.getXPos () + Math.cos (angle) * radius, planet.getYPos () + Math.sin (angle) * radius);
