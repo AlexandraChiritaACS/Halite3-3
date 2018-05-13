@@ -54,28 +54,28 @@ class GameManager {
     }
 
 
-    public Obj secondClosestShip(GameMap gameMap, Pilot pilot)
+    public int secondClosestPlanet(GameMap gameMap, Pilot pilot)
     {
-         Obj ob = new Obj();
-         int nr = 0;
-         Map<Double, Entity> entityByDistance = new TreeMap<>();
-         entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
-         for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
-         {
-            if((entry.getValue() instanceof Ship) && (entry.getValue().getOwner() != gameMap.getMyPlayerId()))
+        int idPlanet = -1;
+        int nr = 0;
+        Map<Double, Entity> entityByDistance = new TreeMap<>();
+        entityByDistance = gameMap.nearbyEntitiesByDistance(pilot.getShip(gameMap));
+        for(Map.Entry<Double, Entity> entry : entityByDistance.entrySet())
+        {
+            if(entry.getValue() instanceof Planet)
             {
-                ob.shipId = entry.getValue().getId();
-                ob.playerId = entry.getValue().getOwner();
+                idPlanet = entry.getValue().getId();
                 nr++;
                 if(nr == 2)
                 {
-                    return ob;
+                    return idPlanet;
                 }
-            } 
-         }
-         
-         return ob;
+            }
+        }
+
+        return idPlanet;
     }
+
 
     public void update (GameMap gameMap, List<Move> outMoves){
         turn ++;
@@ -217,7 +217,8 @@ class GameManager {
             return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
         }
 
-        return new DefentPlanetGoal (this, gameMap, pilot, firstPlanetId);
+        int planetId = secondClosestPlanet(gameMap, pilot);
+        return new GoMineGoal (this, gameMap, pilot, planetId);
     }
 }
 
