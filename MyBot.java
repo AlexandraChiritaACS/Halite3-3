@@ -33,6 +33,7 @@ class GameManager {
     public Map<Integer, Pilot> pilotsMap = new HashMap <>();
     public int turn;
     public int goals;
+    public int numPilotsDocked;
     public int firstPlanetId = -1;
 
     public ShipInfo closestShip(GameMap gameMap, Pilot pilot, boolean onlyDocked)
@@ -142,6 +143,13 @@ class GameManager {
         // update the pilots and generate the moves
         // ========================================
         Collection<Pilot> pilots = pilotsMap.values ();
+        int myPlayerId = gameMap.getMyPlayerId ();
+        numPilotsDocked = 0;
+        for (Pilot pilot : pilots) {
+            Ship ship = gameMap.getShip (myPlayerId, pilot.shipId);
+            if (ship.getDockingStatus () == Ship.DockingStatus.Docked)
+                numPilotsDocked ++;
+        }
         for (Pilot pilot : pilots){
             Move move = pilot.update(this, gameMap);
             if (move != null){
@@ -181,7 +189,7 @@ class GameManager {
                 double dy = (y - otherY);
                 double dist = Math.sqrt (dx * dx + dy * dy);
 
-                if (dist < Constants.SHIP_RADIUS * 6.1){
+                if (dist < Constants.SHIP_RADIUS * 3.1){
                     move = new ThrustMove (ship, thrustMove.getAngle (), 0);
                     moves.set (i, move);
                 }
@@ -253,13 +261,13 @@ class GameManager {
         }
 
         // spawned ships
-        if (0 == (goals % 3)){
+        if (numPilotsDocked > 3 && (0 == (goals % 3))) {
             ShipInfo shipInfo = closestShip(gameMap, pilot, true);
-            Log.log ("pilot for ship " + pilot.shipId + " goal GoAttackGoal");
-            return new GoAttackGoal (this, gameMap, pilot, shipInfo.playerId, shipInfo.shipId, false);
+            Log.log("pilot for ship " + pilot.shipId + " goal GoAttackGoal");
+            return new GoAttackGoal(this, gameMap, pilot, shipInfo.playerId, shipInfo.shipId, false);
         } else {
             int planetId = secondClosestPlanet(gameMap, pilot);
-            Log.log ("pilot for ship " + pilot.shipId + " goal GoMineGoal");
+            Log.log("pilot for ship " + pilot.shipId + " goal GoMineGoal");
             return new GoMineGoal(this, gameMap, pilot, planetId);
         }
     }
@@ -508,12 +516,12 @@ class GoToPlanetTask extends GoToTask{
         return gameMap.getPlanet (planetId);
     }
 
-    @java.lang.Override
+    @Override
     public Move update(GameManager gameManager, GameMap gameMap) {
 
         Planet planet = gameMap.getPlanet (planetId);
         int myPlayerId = gameMap.getMyPlayerId ();
-        if (planet.isOwned () && planet.getOwner () != myPlayerId){
+        if (planet.isFull () || (planet.isOwned () && planet.getOwner () != myPlayerId)){
             return goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
         }
 
@@ -551,7 +559,7 @@ class DockPlanetTask extends Task {
         int playerId = gameMap.getMyPlayerId ();
         Ship ship = gameMap.getShip (playerId, pilot.shipId);
         Planet planet = gameMap.getPlanet (planetId);
-        if (planet.isOwned () && planet.getOwner () != playerId){
+        if (planet.isFull () || (planet.isOwned () && planet.getOwner () != playerId)){
             goal.alarm(gameManager, gameMap, ISSUE_NO_TARGET);
         }
         numUpdates ++;
